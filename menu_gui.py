@@ -31,92 +31,7 @@ SELECT_FOLDER_PATHS = os.path.join(BASE_DIR, "Recipee's", "Aloo Samosa")
 global error_cells
 error_cells = [] 
 
-def handle_row_selection(event, frame, data_type):
-    global selected_row_for_copy
-    
-    # Get the widget that triggered the event
-    widget = event.widget
-    
-    # Get the parent frame (cell) of the label
-    cell = widget.master
-    
-    # Get the grid info for the cell
-    row = cell.grid_info()['row']
-    
-    # Don't select header row
-    if row <= 0:
-        return
-        
-    # Get column number
-    col = cell.grid_info()['column']
-    
-    # Don't handle clicks on audio columns
-    if (frame == ingredients_frame and col in [4, 5, 6, 7]) or \
-       (frame == instructions_frame and col in [16, 17, 18, 19]):
-        return
-        
-    # Toggle selection
-    if selected_row_for_copy == row:
-        highlight_row(row, frame, default_color)
-        selected_row_for_copy = None
-    else:
-        # Clear previous selection
-        if selected_row_for_copy is not None:
-            highlight_row(selected_row_for_copy, frame, default_color)
-        
-        selected_row_for_copy = row
-        highlight_row(row, frame, "light blue")
 
-def highlight_row(row, frame, color):
-    # Get all cells in the row
-    for widget in frame.grid_slaves(row=row):
-        if isinstance(widget, tk.Frame):
-            # Get the label inside the cell frame
-            for child in widget.winfo_children():
-                if isinstance(child, tk.Label):
-                    # Don't change color of error cells
-                    if (row, widget.grid_info()['column']) not in error_cells:
-                        child.configure(bg=color)
-
-def copy_row():
-    global copied_row_data
-    if not selected_row_for_copy:
-        messagebox.showwarning("Warning", "Please select a row first by clicking it")
-        return
-        
-    if selected_row_for_copy < len(instruction_data):
-        copied_row_data = instruction_data[selected_row_for_copy].copy()
-        messagebox.showinfo("Success", "Row copied!")
-
-def paste_row():
-    global copied_row_data
-    if not copied_row_data:
-        messagebox.showwarning("Warning", "No row has been copied yet")
-        return
-        
-    if not selected_row_for_copy:
-        messagebox.showwarning("Warning", "Please select a destination row")
-        return
-        
-    if selected_row_for_copy < len(instruction_data):
-        instruction_data[selected_row_for_copy] = copied_row_data.copy()
-        refresh_tables()
-        messagebox.showinfo("Success", "Row pasted!")
-
-def delete_row():
-    global selected_row_for_copy
-    if not selected_row_for_copy:
-        messagebox.showwarning("Warning", "Please select a row to delete")
-        return
-        
-    if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this row?"):
-        if selected_row_for_copy < len(instruction_data):
-            del instruction_data[selected_row_for_copy]
-        elif selected_row_for_copy < len(ingredient_data):
-            del ingredient_data[selected_row_for_copy]
-            selected_row_for_copy = None
-        refresh_tables()
-        messagebox.showinfo("Success", "Row deleted!")
 def change_cell_color(row, col, frame, color):
     for widget in frame.grid_slaves(row=row, column=col):
         if isinstance(widget, tk.Frame):
@@ -380,55 +295,35 @@ def add_instruction():
     
 
 # Function to display the ingredients table
-def display_ingredients_table(data):
-    global selected_row
-    for i, row in enumerate(data):
-        for j, value in enumerate(row):
-            cell = tk.Frame(ingredients_frame, bg=default_color if i != selected_row else highlight_color, relief="solid", borderwidth=1)
-            cell.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
-            
-            label = tk.Label(cell, text=str(value), font=('Arial', 10), bg=default_color if i != selected_row else highlight_color, anchor='center')
-            label.pack(side='left', fill='both', expand=True)
-            
-            label.bind("<ButtonPress-3>", lambda event, r=i: start_long_press(r, ingredients_frame))
-            label.bind("<ButtonRelease-3>", lambda event, r=i: end_long_press(r, ingredients_frame))
-
-            if i > 0:  # Skip the header
-                label.bind("<Double-1>", lambda event, r=i, c=j: edit_cell(r, c, ingredient_data, ingredients_frame))
-                
-            if j == 4:  # Index of the audioP column
-                    label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
-            elif j == 5:  # Index of the audioP column
-               label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
-            elif j == 6:  # Index of the audioQ column
-               label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
-            elif j == 7:  # Index of the audioU column
-               label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))    
-
-    # Make the columns resize equally
-    for j in range(len(data[0])):
-        ingredients_frame.grid_columnconfigure(j, weight=1)
-
-# Function to display the instructions table
 def display_instructions_table(data):
-    global selected_row
+    global selected_row, error_cells
+    error_cells = check_for_errors(data, instructions_frame)
+    
     for i, row in enumerate(data):
         for j, value in enumerate(row):
-            cell = tk.Frame(instructions_frame, bg=default_color if i != selected_row else highlight_color, relief="solid", borderwidth=1)
+            cell = tk.Frame(instructions_frame, relief="solid", borderwidth=1)
             cell.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
             
-            # Check if this is the stirrer column (index 10) and not the header row
-            bg_color = NORMAL_COLOR
-            if i > 0 and j == 10:  # Stirrer column
-                if not is_valid_stirrer_value(value):
-                    bg_color = ERROR_COLOR
-            bg_color = NORMAL_COLOR
-            if i > 0 and j == 12:  # Magnetron column
-                if not is_valid_magnetron_value(value):
-                    bg_color = ERROR_COLOR
-            label = tk.Label(cell, text=str(value), font=('Arial', 10), bg=bg_color, anchor='center')
-            label.pack(side='left', fill='both', expand=True)
+            if (i, j) in error_cells:
+                bg_color = "red"
+            elif i == selected_row:
+                bg_color = highlight_color
+            else:
+                bg_color = default_color
             
+            # Check if it's an audio column and the audio file is missing
+            if i > 0 and j in [16, 17, 18, 19] and value and not audio_file_exists(value):
+                bg_color = "red"
+            
+            underline = (j in [16, 17, 18, 19] and i > 0)
+            
+            label = tk.Label(cell, text=str(value), font=('Arial', 10, 'underline' if underline else ''),
+                             bg=bg_color, anchor='center')
+            label.pack(side='left', fill='both', expand=True)
+
+            if j in [16, 17, 18, 19]:  # AudioI, AudioP, AudioQ, AudioU columns
+              label.bind("<Button-1>", lambda event, r=i, c=j: on_instruction_audio_click(r, c))
+              
             if i > 0:  # Skip the header
                 label.bind("<Double-1>", lambda event, r=i, c=j: edit_cell(r, c, instruction_data, instructions_frame))
                 
@@ -447,6 +342,48 @@ def display_instructions_table(data):
     # Make the columns resize equally
     for j in range(len(data[0])):
         instructions_frame.grid_columnconfigure(j, weight=1)
+
+def display_ingredients_table(data):
+    
+    
+    for i, row in enumerate(data):
+        for j, value in enumerate(row):
+            cell = tk.Frame(ingredients_frame, relief="solid", borderwidth=1)
+            cell.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
+            
+            bg_color = default_color if i != selected_row else highlight_color
+            
+            # Check if it's an audio column and the audio file is missing
+            if i > 0 and j in [4, 5, 6, 7] and value and not audio_file_exists(value):
+                bg_color = "red"
+            
+            underline = (j in [4, 5, 6, 7] and i > 0)
+            
+            label = tk.Label(cell, text=str(value), font=('Arial', 10, 'underline' if underline else ''),
+                             bg=bg_color, anchor='center')
+            label.pack(side='left', fill='both', expand=True)
+            
+            if j in [4, 5, 6, 7]:  # audio, audioI, audioP, audioQ, audioU columns
+              label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
+            else:
+              label.bind("<Button-1>", lambda event, r=i, c=j: handle_missing_audio(r, c)) 
+
+            if i > 0:  # Skip the header
+                label.bind("<Double-1>", lambda event, r=i, c=j: edit_cell(r, c, ingredient_data, ingredients_frame))
+                
+                
+            if j == 4:  # Index of the audioP column
+                    label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
+            elif j == 5:  # Index of the audioP column
+               label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
+            elif j == 6:  # Index of the audioQ column
+               label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
+            elif j == 7:  # Index of the audioU column
+               label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))    
+
+    # Make the columns resize equally
+    for j in range(len(data[0])):
+        ingredients_frame.grid_columnconfigure(j, weight=1)
 
 
 
@@ -1339,13 +1276,5 @@ prt4_button.pack(side='left', padx=5)
 refresh_button = tk.Button(button_frame, text="Refresh", command=refresh_tables)
 refresh_button.pack(side=tk.LEFT, padx=5)
 
-copy_button = tk.Button(button_frame, text="Copy Row", command=copy_row)
-copy_button.pack(side='left', padx=5)
 
-paste_button = tk.Button(button_frame, text="Paste Row", command=paste_row)
-paste_button.pack(side='left', padx=5)
-
-delete_button = tk.Button(button_frame, text="Delete Row", command=delete_row)
-delete_button.pack(side='left', padx=5)
-# Start the tkinter event loop
 root.mainloop()
