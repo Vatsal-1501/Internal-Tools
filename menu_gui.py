@@ -10,18 +10,23 @@ import zipfile
 import json
 from tkinter import ttk
 import shutil 
+import copy
 
 # Global variables
 ingredient_data = None  # Data for the ingredients table
 instruction_data = None  # Data for the instructions table
 data = None
-selected_row = None  # Store the currently selected row
+selected_ingredient_row = None  # Store selected row in ingredients
+selected_instruction_row = None  # Store selected row in instructions
+
 highlight_color = "yellow"  # Color for highlighting the selected row
 default_color = "white"  # Default background color
 long_press_duration = 500  # Duration in milliseconds to detect long press
 long_press_active = False  # To track if long press is active
-selected_row_for_copy = None  # Store the row selected for copy/paste/delete operations
-copied_row_data = None  # Store the copied row data
+
+
+copied_ingredient_row = None  # Store copied ingredient row
+copied_instruction_row = None  # Store copied instruction row
 ERROR_COLOR = "red"
 NORMAL_COLOR = "white"
 pygame.mixer.init()
@@ -292,26 +297,165 @@ def add_instruction():
     instruction_data.append([f"Step {next_step_number}", "","0", "0", "", "0", "0", "N/A", "0","0","","","","","","","","","","",""])    # Add a new instruction row
     clear_table(instructions_frame)  # Clear the current table
     display_instructions_table(instruction_data)  # Refresh the instructions table
+def copy_selected_row():
+    global copied_ingredient_row, copied_instruction_row, selected_ingredient_row, selected_instruction_row
     
+    if selected_ingredient_row is not None and selected_ingredient_row > 0:
+        # Copy ingredient row
+        copied_ingredient_row = copy.deepcopy(ingredient_data[selected_ingredient_row])
+        copied_instruction_row = None  # Clear other clipboard
+        selected_ingredient_row = None  # Unselect row after copying
+        clear_table(ingredients_frame)
+        display_ingredients_table(ingredient_data)
+        messagebox.showinfo("Success", "Ingredient row copied!")
+        
+    elif selected_instruction_row is not None and selected_instruction_row > 0:
+        # Copy instruction row
+        copied_instruction_row = copy.deepcopy(instruction_data[selected_instruction_row])
+        copied_ingredient_row = None  # Clear other clipboard
+        selected_instruction_row = None  # Unselect row after copying
+        clear_table(instructions_frame)
+        display_instructions_table(instruction_data)
+        messagebox.showinfo("Success", "Instruction row copied!")
+        
+    else:
+        messagebox.showwarning("Warning", "Please select a valid row to copy")
 
-# Function to display the ingredients table
-def display_instructions_table(data):
-    global selected_row, error_cells
-    error_cells = check_for_errors(data, instructions_frame)
+def paste_row():
+    global copied_ingredient_row, copied_instruction_row, selected_ingredient_row, selected_instruction_row
     
+    if selected_ingredient_row is not None and copied_ingredient_row is not None:
+        # Paste ingredient row
+        if selected_ingredient_row == 0:
+            insert_position = 1
+        else:
+            insert_position = selected_ingredient_row + 1
+            
+        ingredient_data.insert(insert_position, copy.deepcopy(copied_ingredient_row))
+        selected_ingredient_row = None  # Unselect row after pasting
+        clear_table(ingredients_frame)
+        display_ingredients_table(ingredient_data)
+        messagebox.showinfo("Success", "Ingredient row pasted!")
+        
+    elif selected_instruction_row is not None and copied_instruction_row is not None:
+        # Paste instruction row
+        if selected_instruction_row == 0:
+            insert_position = 1
+        else:
+            insert_position = selected_instruction_row + 1
+            
+        instruction_data.insert(insert_position, copy.deepcopy(copied_instruction_row))
+        update_step_numbers()  # Update step numbers after paste
+        selected_instruction_row = None  # Unselect row after pasting
+        clear_table(instructions_frame)
+        display_instructions_table(instruction_data)
+        messagebox.showinfo("Success", "Instruction row pasted!")
+        
+    else:
+        if copied_ingredient_row is None and copied_instruction_row is None:
+            messagebox.showwarning("Warning", "No row has been copied yet")
+        else:
+            messagebox.showwarning("Warning", "Please select a row in the correct table to paste") 
+# Function to display the ingredients table
+def update_step_numbers():
+    # Skip header row (index 0)
+    for i in range(1, len(instruction_data)):
+        instruction_data[i][0] = f"Step {i}"  # Update step number in first column
+
+def delete_selected_row():
+    global selected_ingredient_row, selected_instruction_row
+    
+    # Handle ingredient deletion
+    if selected_ingredient_row is not None:
+        if selected_ingredient_row == 0:  # Don't delete header row
+            messagebox.showwarning("Warning", "Cannot delete header row")
+            return
+            
+        response = messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this ingredient?")
+        if response:
+            ingredient_data.pop(selected_ingredient_row)
+            selected_ingredient_row = None
+            clear_table(ingredients_frame)
+            display_ingredients_table(ingredient_data)
+    
+    # Handle instruction deletion
+    elif selected_instruction_row is not None:
+        if selected_instruction_row == 0:  # Don't delete header row
+            messagebox.showwarning("Warning", "Cannot delete header row")
+            return
+            
+        response = messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this instruction?")
+        if response:
+            instruction_data.pop(selected_instruction_row)
+            update_step_numbers()
+            selected_instruction_row = None
+            clear_table(instructions_frame)
+            display_instructions_table(instruction_data)
+    
+    else:
+        messagebox.showwarning("Warning", "Please select a row to delete")
+
+def select_row_long_press(row, frame):
+    global selected_ingredient_row, selected_instruction_row, long_press_active
+    
+    if not long_press_active:
+        return
+        
+    if frame == ingredients_frame:
+        if selected_ingredient_row == row:
+            selected_ingredient_row = None
+        else:
+            selected_ingredient_row = row
+            selected_instruction_row = None  # Clear other table's selection
+    else:  # instructions_frame
+        if selected_instruction_row == row:
+            selected_instruction_row = None
+        else:
+            selected_instruction_row = row
+            selected_ingredient_row = None  # Clear other table's selection
+    
+    # Refresh both tables to update highlighting
+    clear_table(ingredients_frame)
+    clear_table(instructions_frame)
+    display_ingredients_table(ingredient_data)
+    display_instructions_table(instruction_data)
+
+def display_ingredients_table(data):
+    for i, row in enumerate(data):
+        for j, value in enumerate(row):
+            cell = tk.Frame(ingredients_frame, relief="solid", borderwidth=1)
+            cell.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
+            
+            bg_color = highlight_color if i == selected_ingredient_row else default_color
+            
+            if i > 0 and j in [4, 5, 6, 7] and value and not audio_file_exists(value):
+                bg_color = "red"
+            
+            underline = (j in [4, 5, 6, 7] and i > 0)
+            
+            label = tk.Label(cell, text=str(value), font=('Arial', 10, 'underline' if underline else ''),
+                             bg=bg_color, anchor='center')
+            label.pack(side='left', fill='both', expand=True)
+
+            if i > 0:  # Skip header row
+                label.bind("<Double-1>", lambda event, r=i, c=j: edit_cell(r, c, ingredient_data, ingredients_frame))
+                label.bind("<ButtonPress-3>", lambda event, r=i: start_long_press(r, ingredients_frame))
+                label.bind("<ButtonRelease-3>", lambda event, r=i: end_long_press(r, ingredients_frame))
+
+            if j in [4, 5, 6, 7]:  # Audio columns
+                label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
+
+    for j in range(len(data[0])):
+        ingredients_frame.grid_columnconfigure(j, weight=1)
+
+def display_instructions_table(data):
     for i, row in enumerate(data):
         for j, value in enumerate(row):
             cell = tk.Frame(instructions_frame, relief="solid", borderwidth=1)
             cell.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
             
-            if (i, j) in error_cells:
-                bg_color = "red"
-            elif i == selected_row:
-                bg_color = highlight_color
-            else:
-                bg_color = default_color
+            bg_color = highlight_color if i == selected_instruction_row else default_color
             
-            # Check if it's an audio column and the audio file is missing
             if i > 0 and j in [16, 17, 18, 19] and value and not audio_file_exists(value):
                 bg_color = "red"
             
@@ -321,149 +465,75 @@ def display_instructions_table(data):
                              bg=bg_color, anchor='center')
             label.pack(side='left', fill='both', expand=True)
 
-            if j in [16, 17, 18, 19]:  # AudioI, AudioP, AudioQ, AudioU columns
-              label.bind("<Button-1>", lambda event, r=i, c=j: on_instruction_audio_click(r, c))
-              
-            if i > 0:  # Skip the header
+            if i > 0:  # Skip header row
                 label.bind("<Double-1>", lambda event, r=i, c=j: edit_cell(r, c, instruction_data, instructions_frame))
-                
-                # Detect long press (right-click hold) for selecting row
                 label.bind("<ButtonPress-3>", lambda event, r=i: start_long_press(r, instructions_frame))
                 label.bind("<ButtonRelease-3>", lambda event, r=i: end_long_press(r, instructions_frame))
-            if j == 16:  # AudioI column
+
+            if j in [16, 17, 18, 19]:  # Audio columns
                 label.bind("<Button-1>", lambda event, r=i, c=j: on_instruction_audio_click(r, c))
-            elif j == 17:  # AudioP column
-                label.bind("<Button-1>", lambda event, r=i, c=j: on_instruction_audio_click(r, c))
-            elif j == 18:  # AudioQ column
-                label.bind("<Button-1>", lambda event, r=i, c=j: on_instruction_audio_click(r, c))
-            elif j == 19:  # AudioU column
-                label.bind("<Button-1>", lambda event, r=i, c=j: on_instruction_audio_click(r, c))
-            
-    # Make the columns resize equally
+
     for j in range(len(data[0])):
         instructions_frame.grid_columnconfigure(j, weight=1)
 
-def display_ingredients_table(data):
-    
-    
-    for i, row in enumerate(data):
-        for j, value in enumerate(row):
-            cell = tk.Frame(ingredients_frame, relief="solid", borderwidth=1)
-            cell.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
-            
-            bg_color = default_color if i != selected_row else highlight_color
-            
-            # Check if it's an audio column and the audio file is missing
-            if i > 0 and j in [4, 5, 6, 7] and value and not audio_file_exists(value):
-                bg_color = "red"
-            
-            underline = (j in [4, 5, 6, 7] and i > 0)
-            
-            label = tk.Label(cell, text=str(value), font=('Arial', 10, 'underline' if underline else ''),
-                             bg=bg_color, anchor='center')
-            label.pack(side='left', fill='both', expand=True)
-            
-            if j in [4, 5, 6, 7]:  # audio, audioI, audioP, audioQ, audioU columns
-              label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
-            else:
-              label.bind("<Button-1>", lambda event, r=i, c=j: handle_missing_audio(r, c)) 
-
-            if i > 0:  # Skip the header
-                label.bind("<Double-1>", lambda event, r=i, c=j: edit_cell(r, c, ingredient_data, ingredients_frame))
-                
-                
-            if j == 4:  # Index of the audioP column
-                    label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
-            elif j == 5:  # Index of the audioP column
-               label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
-            elif j == 6:  # Index of the audioQ column
-               label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
-            elif j == 7:  # Index of the audioU column
-               label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))    
-
-    # Make the columns resize equally
-    for j in range(len(data[0])):
-        ingredients_frame.grid_columnconfigure(j, weight=1)
-
-
-
-def start_long_press(row, frame):
-    global long_press_active
-    long_press_active = True
-    root.after(long_press_duration, lambda: select_row_long_press(row, frame))  # Set a timer for the long press
-
-# Function to end long press detection
-def end_long_press(row, frame):
-    global long_press_active
-    long_press_active = False  # Reset the long press active state
-
-# Function to handle row selection on long press
-def select_row_long_press(row, frame):
-    global selected_row, long_press_active
-    if long_press_active:  # Ensure the long press is still active when timer expires
-      if frame == instructions_frame:
-        if selected_row == row:
-            selected_row = None  # Deselect the row if it was already selected
-        else:
-            selected_row = row  # Select the new row
-        clear_table(frame)  # Clear the table and re-draw to update the highlight
-        if frame == instructions_frame:
-            display_instructions_table(instruction_data)
+def move_row_up(data_table, frame):
+    global selected_instruction_row
+    if frame != instructions_frame:  # Only allow moving rows in instructions table
+        return
         
+    if selected_instruction_row is None or selected_instruction_row <= 1:  # Don't move header row or first row
+        messagebox.showwarning("Warning", "Cannot move this row up")
+        return
+    
+    # Swap the selected row with the one above it
+    data_table[selected_instruction_row], data_table[selected_instruction_row - 1] = \
+        data_table[selected_instruction_row - 1], data_table[selected_instruction_row]
+    
+    # Update the selected row index to reflect the new position
+    selected_instruction_row -= 1
+    
+    # Update step numbers
+    update_step_numbers()
+    
+    # Clear and refresh the table to reflect the changes
+    clear_table(frame)
+    display_instructions_table(data_table)
 
-# Function to clear the table before refreshing
+def move_row_down(data_table, frame):
+    global selected_instruction_row
+    if frame != instructions_frame:  # Only allow moving rows in instructions table
+        return
+        
+    if selected_instruction_row is None or selected_instruction_row >= len(data_table) - 1:  # Don't move last row
+        messagebox.showwarning("Warning", "Cannot move this row down")
+        return
+    
+    # Swap the selected row with the one below it
+    data_table[selected_instruction_row], data_table[selected_instruction_row + 1] = \
+        data_table[selected_instruction_row + 1], data_table[selected_instruction_row]
+    
+    # Update the selected row index to reflect the new position
+    selected_instruction_row += 1
+    
+    # Update step numbers
+    update_step_numbers()
+    
+    # Clear and refresh the table to reflect the changes
+    clear_table(frame)
+    display_instructions_table(data_table)
+
 def clear_table(frame):
     for widget in frame.winfo_children():
         widget.destroy()
 
-def update_step_numbers(data_table):
-    # Reassign step numbers with the "Step" prefix
-    for i in range(1, len(data_table)):  # Skip header (index 0)
-        data_table[i][0] = f"Step {i}"  # Assuming the step number is in the first column (index 0)
+def start_long_press(row, frame):
+    global long_press_active
+    long_press_active = True
+    root.after(500, lambda: select_row_long_press(row, frame))
 
-def move_row_up(data_table, frame):
-    global selected_row
-    if selected_row is None or selected_row == 1:  # Ensure the header row (index 0) is not selected
-        return
-    
-    # Swap the selected row with the one above it
-    data_table[selected_row], data_table[selected_row - 1] = data_table[selected_row - 1], data_table[selected_row]
-    
-    # Update the selected row index to reflect the new position
-    selected_row -= 1
-    
-    # Update step numbers after the move
-    update_step_numbers(data_table)
-    
-    # Clear and refresh the table to reflect the changes
-    clear_table(frame)
-    if frame == ingredients_frame:
-        display_ingredients_table(data_table)
-    else:
-        display_instructions_table(data_table)
-
-# Function to move a row down
-def move_row_down(data_table, frame):
-    global selected_row
-    if selected_row is None or selected_row == len(data_table) - 1:  # Ensure it's not the last row
-        return
-    
-    # Swap the selected row with the one below it
-    data_table[selected_row], data_table[selected_row + 1] = data_table[selected_row + 1], data_table[selected_row]
-    
-    # Update the selected row index to reflect the new position
-    selected_row += 1
-    
-    # Update step numbers after the move
-    update_step_numbers(data_table)
-    
-    # Clear and refresh the table to reflect the changes
-    clear_table(frame)
-    if frame == ingredients_frame:
-        display_ingredients_table(data_table)
-    else:
-        display_instructions_table(data_table)
-
+def end_long_press(row, frame):
+    global long_press_active
+    long_press_active = False
 
 # Modify the display functions to detect row selection
 
@@ -767,7 +837,6 @@ def save_json():
 
         # Update recipe metadata if 'data' exists
         if isinstance(data, dict):
-            updated_data["name"] = [data.get("name", ["Unknown Recipe"])[0]] if isinstance(data.get("name"), list) else [data.get("name", "Unknown Recipe")]
             updated_data["audio1"] = data.get("audio1", [""])
             updated_data["audio2"] = data.get("audio2", [""])
             updated_data["category"] = str(data.get("category", "0"))
@@ -834,7 +903,7 @@ def save_json():
                 updated_data["Ingredients"].append(ingredient)
                 current_id += 1
 
-        # Process Instructions
+ # Process Instructions
         current_id = 1  # Reset current_id for instructions
         if isinstance(instruction_data, list) and len(instruction_data) > 1:
             for i in range(1, len(instruction_data)):  # Skip header row
@@ -1134,7 +1203,6 @@ def refresh_tables():
     # Recheck for errors
     error_cells = check_for_errors(instruction_data, instructions_frame)
     
-    messagebox.showinfo("Refresh", "Tables have been refreshed and errors rechecked.")
 root = tk.Tk()
 root.title("Recipe Editor")
 
@@ -1272,6 +1340,15 @@ prt3_button.pack(side='left', padx=5)
 
 prt4_button = tk.Button(button_frame, text="prt4", command=lambda: prt_action("prt 4"))
 prt4_button.pack(side='left', padx=5)
+
+delete_row_button = tk.Button(button_frame, text="Delete Row", command=delete_selected_row)
+delete_row_button.pack(side='left', padx=5)
+
+copy_button = tk.Button(button_frame, text="Copy Row", command=copy_selected_row)
+copy_button.pack(side='left', padx=5)
+
+paste_button = tk.Button(button_frame, text="Paste Row", command=paste_row)
+paste_button.pack(side='left', padx=5)
 
 refresh_button = tk.Button(button_frame, text="Refresh", command=refresh_tables)
 refresh_button.pack(side=tk.LEFT, padx=5)
