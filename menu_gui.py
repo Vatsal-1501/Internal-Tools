@@ -1,16 +1,19 @@
-
-import tkinter as tk
-from tkinter import filedialog, messagebox ,ttk,Menu,simpledialog
+# Import necessary libraries
+import tkinter as tk 
+from tkinter import filedialog, messagebox, ttk, Menu, simpledialog ,font
 import pygame 
-import os
+import os 
 import threading
 import time
 import io
 import zipfile
 import json
 from tkinter import ttk
-import shutil 
+import shutil
 import copy
+import platform
+import sys 
+
 
 # Global variables
 ingredient_data = None  # Data for the ingredients table
@@ -21,22 +24,37 @@ selected_instruction_row = None  # Store selected row in instructions
 
 highlight_color = "yellow"  # Color for highlighting the selected row
 default_color = "white"  # Default background color
-long_press_duration = 500  # Duration in milliseconds to detect long press
-long_press_active = False  # To track if long press is active
 
 
 copied_ingredient_row = None  # Store copied ingredient row
 copied_instruction_row = None  # Store copied instruction row
 ERROR_COLOR = "red"
 NORMAL_COLOR = "white"
+
+# Initialize pygame mixer for audio playback
 pygame.mixer.init()
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def get_base_path():
+    # When running as exe, sys.executable gives the exe path
+    # When running as script, __file__ gives the script path
+    if getattr(sys, 'frozen', False):
+        # Running as exe
+        base_path = os.path.dirname(sys.executable)
+    else:
+        # Running as script
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return base_path
+
+# Set up directory paths
+BASE_DIR = get_base_path()
 AUDIO_FOLDER_PATH = os.path.join(BASE_DIR, "mp3")
 SELECT_FOLDER_PATHS = os.path.join(BASE_DIR, "Recipee's", "Aloo Samosa")
+
 global error_cells
-error_cells = [] 
+error_cells = []
 
-
+# Function to change the color of a specific cell
 def change_cell_color(row, col, frame, color):
     for widget in frame.grid_slaves(row=row, column=col):
         if isinstance(widget, tk.Frame):
@@ -47,13 +65,15 @@ def change_cell_color(row, col, frame, color):
                     else:
                         # Reset to default color and style
                         label.config(bg=default_color, font=('Arial', 10, 'underline'))
+
+# Function to play audio file
 def play_audio(file_name, row, col, frame):
     audio_file = os.path.join(AUDIO_FOLDER_PATH, file_name)
-    
+
     if os.path.exists(audio_file):
         # Change cell color to light green
         change_cell_color(row, col, frame, "light green")
-        
+
         def play_and_reset():
             pygame.mixer.music.load(audio_file)
             pygame.mixer.music.play()
@@ -61,11 +81,9 @@ def play_audio(file_name, row, col, frame):
                 time.sleep(0.1)
             # Reset cell color after audio finishes
             root.after(0, lambda: change_cell_color(row, col, frame, None))
-        
+
         # Start audio playback in a separate thread
         threading.Thread(target=play_and_reset, daemon=True).start()
-    
-        
 
 # Function to handle left-click on the audioP column (column index 5)
 def on_audio_click(row, col):
@@ -74,19 +92,19 @@ def on_audio_click(row, col):
         audio_file_name = f"{audio_value}.mp3"
         play_audio(audio_file_name, row, col, ingredients_frame)
 
+# Function to handle left-click on instruction audio columns
 def on_instruction_audio_click(row, col):
     audio_value = instruction_data[row][col]
     if audio_value:
         audio_file_name = f"{audio_value}.mp3"
         play_audio(audio_file_name, row, col, instructions_frame)
 
+# Function to check if an audio file exists
 def audio_file_exists(file_name):
     audio_path = os.path.join(AUDIO_FOLDER_PATH, f"{file_name}.mp3")
-    if os.path.exists(audio_path):
-        return True
-    else:
-        return False
+    return os.path.exists(audio_path)
 
+# Function to handle missing audio files
 def handle_missing_audio(file_name):
     audio_path = os.path.join(AUDIO_FOLDER_PATH, f"{file_name}.mp3")
     if not os.path.exists(audio_path):
@@ -286,7 +304,7 @@ def clear_table(frame):
     for widget in frame.winfo_children():
         widget.destroy()
 def add_ingredient():
-    ingredient_data.append(["New Ingredient", "0", "","","","","0",""])  # Add a new ingredient row
+    ingredient_data.append(["New Ingredient", "0", "","","","","0","","",""])  # Add a new ingredient row
     clear_table(ingredients_frame)  # Clear the current table
     display_ingredients_table(ingredient_data)  # Refresh the ingredients table
 
@@ -294,34 +312,10 @@ def add_ingredient():
 def add_instruction():
     # Determine the next step number
     next_step_number = len(instruction_data)  # Current length gives the next step number
-    instruction_data.append([f"Step {next_step_number}", "","0", "0", "", "0", "0", "N/A", "0","0","","","","","","","","","","",""])    # Add a new instruction row
+    instruction_data.append([f"Step {next_step_number}", "","0", "0", "", "0", "0", "N/A", "0","0","","","","","","","","","","","","","",""])    # Add a new instruction row
     clear_table(instructions_frame)  # Clear the current table
     display_instructions_table(instruction_data)  # Refresh the instructions table
-def copy_selected_row():
-    global copied_ingredient_row, copied_instruction_row, selected_ingredient_row, selected_instruction_row
-    
-    if selected_ingredient_row is not None and selected_ingredient_row > 0:
-        # Copy ingredient row
-        copied_ingredient_row = copy.deepcopy(ingredient_data[selected_ingredient_row])
-        copied_instruction_row = None  # Clear other clipboard
-        selected_ingredient_row = None  # Unselect row after copying
-        clear_table(ingredients_frame)
-        display_ingredients_table(ingredient_data)
-        messagebox.showinfo("Success", "Ingredient row copied!")
-        
-    elif selected_instruction_row is not None and selected_instruction_row > 0:
-        # Copy instruction row
-        copied_instruction_row = copy.deepcopy(instruction_data[selected_instruction_row])
-        copied_ingredient_row = None  # Clear other clipboard
-        selected_instruction_row = None  # Unselect row after copying
-        clear_table(instructions_frame)
-        display_instructions_table(instruction_data)
-        messagebox.showinfo("Success", "Instruction row copied!")
-        
-    else:
-        messagebox.showwarning("Warning", "Please select a valid row to copy")
-
-def paste_row():
+def paste_row(paste_above=False):
     global copied_ingredient_row, copied_instruction_row, selected_ingredient_row, selected_instruction_row
     
     if selected_ingredient_row is not None and copied_ingredient_row is not None:
@@ -329,38 +323,62 @@ def paste_row():
         if selected_ingredient_row == 0:
             insert_position = 1
         else:
-            insert_position = selected_ingredient_row + 1
+            insert_position = selected_ingredient_row if paste_above else selected_ingredient_row + 1
             
         ingredient_data.insert(insert_position, copy.deepcopy(copied_ingredient_row))
-        selected_ingredient_row = None  # Unselect row after pasting
+        # Deselect row after pasting
+        selected_ingredient_row = None
         clear_table(ingredients_frame)
         display_ingredients_table(ingredient_data)
-        messagebox.showinfo("Success", "Ingredient row pasted!")
         
     elif selected_instruction_row is not None and copied_instruction_row is not None:
         # Paste instruction row
         if selected_instruction_row == 0:
             insert_position = 1
         else:
-            insert_position = selected_instruction_row + 1
+            insert_position = selected_instruction_row if paste_above else selected_instruction_row + 1
             
         instruction_data.insert(insert_position, copy.deepcopy(copied_instruction_row))
         update_step_numbers()  # Update step numbers after paste
-        selected_instruction_row = None  # Unselect row after pasting
+        # Deselect row after pasting
+        selected_instruction_row = None
         clear_table(instructions_frame)
         display_instructions_table(instruction_data)
-        messagebox.showinfo("Success", "Instruction row pasted!")
         
     else:
         if copied_ingredient_row is None and copied_instruction_row is None:
             messagebox.showwarning("Warning", "No row has been copied yet")
         else:
-            messagebox.showwarning("Warning", "Please select a row in the correct table to paste") 
-# Function to display the ingredients table
+            messagebox.showwarning("Warning", "Please select a row in the correct table to paste")
+
 def update_step_numbers():
     # Skip header row (index 0)
     for i in range(1, len(instruction_data)):
         instruction_data[i][0] = f"Step {i}"  # Update step number in first column
+
+def copy_selected_row():
+    global copied_ingredient_row, copied_instruction_row, selected_ingredient_row, selected_instruction_row
+    
+    if selected_ingredient_row is not None and selected_ingredient_row > 0:
+        # Copy ingredient row
+        copied_ingredient_row = copy.deepcopy(ingredient_data[selected_ingredient_row])
+        copied_instruction_row = None  # Clear other clipboard
+        # Deselect row after copying
+        selected_ingredient_row = None
+        clear_table(ingredients_frame)
+        display_ingredients_table(ingredient_data)
+        
+    elif selected_instruction_row is not None and selected_instruction_row > 0:
+        # Copy instruction row
+        copied_instruction_row = copy.deepcopy(instruction_data[selected_instruction_row])
+        copied_ingredient_row = None  # Clear other clipboard
+        # Deselect row after copying
+        selected_instruction_row = None
+        clear_table(instructions_frame)
+        display_instructions_table(instruction_data)
+        
+    else:
+        messagebox.showwarning("Warning", "Please select a valid row to copy")
 
 def delete_selected_row():
     global selected_ingredient_row, selected_instruction_row
@@ -395,39 +413,90 @@ def delete_selected_row():
     else:
         messagebox.showwarning("Warning", "Please select a row to delete")
 
-def select_row_long_press(row, frame):
-    global selected_ingredient_row, selected_instruction_row, long_press_active
+
+def show_context_menu(event, row, frame):
+    global selected_ingredient_row, selected_instruction_row
+
+    # Handle deselection when clicking already selected row
+    if frame == ingredients_frame:
+        if selected_ingredient_row == row:  # If clicking already selected row
+            update_row_highlight(selected_ingredient_row, "white", frame)
+            selected_ingredient_row = None
+            return  # Don't show context menu when deselecting
+        else:
+            # Find and update previous highlighted row (if any)
+            if selected_ingredient_row is not None:
+                update_row_highlight(selected_ingredient_row, "white", frame)
+            selected_ingredient_row = row
+            selected_instruction_row = None
+            # Highlight new selected row
+            update_row_highlight(row, "yellow", frame)
+    else:  # instructions_frame
+        if selected_instruction_row == row:  # If clicking already selected row
+            update_row_highlight(selected_instruction_row, "white", frame)
+            selected_instruction_row = None
+            return  # Don't show context menu when deselecting
+        else:
+            # Find and update previous highlighted row (if any)
+            if selected_instruction_row is not None:
+                update_row_highlight(selected_instruction_row, "white", frame)
+            selected_instruction_row = row
+            selected_ingredient_row = None
+            # Highlight new selected row
+            update_row_highlight(row, "yellow", frame)
     
-    if not long_press_active:
+    # Create context menu
+    
+    context_menu = tk.Menu(root, tearoff=0)
+    context_menu.add_command(label="Copy", command=lambda: copy_selected_row())
+    
+    # Add Paste option if there's copied content
+    if (frame == ingredients_frame and copied_ingredient_row) or \
+       (frame == instructions_frame and copied_instruction_row):
+        paste_menu = tk.Menu(context_menu, tearoff=0)
+        paste_menu.add_command(label="Paste Above", command=lambda: paste_row(True))
+        paste_menu.add_command(label="Paste Below", command=lambda: paste_row(False))
+        context_menu.add_cascade(label="Paste", menu=paste_menu)
+    else:
+        context_menu.add_command(label="Paste", state="disabled")
+
+    context_menu.add_separator()
+    context_menu.add_command(label="Delete", command=lambda: delete_selected_row())
+
+    # Show context menu at the right-click location
+    try:
+        context_menu.tk_popup(event.x_root, event.y_root)
+    finally:
+        context_menu.grab_release()
+
+def update_row_highlight(row, color, frame):
+    """Update the background color of a specific row without refreshing the entire table"""
+    if row is None or row == 0:  # Don't highlight header row
         return
         
-    if frame == ingredients_frame:
-        if selected_ingredient_row == row:
-            selected_ingredient_row = None
-        else:
-            selected_ingredient_row = row
-            selected_instruction_row = None  # Clear other table's selection
-    else:  # instructions_frame
-        if selected_instruction_row == row:
-            selected_instruction_row = None
-        else:
-            selected_instruction_row = row
-            selected_ingredient_row = None  # Clear other table's selection
-    
-    # Refresh both tables to update highlighting
-    clear_table(ingredients_frame)
-    clear_table(instructions_frame)
-    display_ingredients_table(ingredient_data)
-    display_instructions_table(instruction_data)
+    for widget in frame.grid_slaves(row=row):
+        for label in widget.winfo_children():
+            if isinstance(label, tk.Label):
+                # Preserve red background for missing audio files
+                if (frame == ingredients_frame and widget.grid_info()['column'] in [4, 5, 6, 7]) or \
+                   (frame == instructions_frame and widget.grid_info()['column'] in [16, 17, 18, 19]):
+                    if label.cget('text') and not audio_file_exists(label.cget('text')):
+                        continue  # Skip updating color for missing audio files
+                label.configure(bg=color)
 
 def display_ingredients_table(data):
+    highlight_color = "yellow"  # Define highlight color
+    default_color = "white"     # Define default color
+    
     for i, row in enumerate(data):
         for j, value in enumerate(row):
             cell = tk.Frame(ingredients_frame, relief="solid", borderwidth=1)
             cell.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
             
+            # Set background color based on selection and conditions
             bg_color = highlight_color if i == selected_ingredient_row else default_color
-            
+            if i == 0:  # If it's header row
+                bg_color = "light grey"
             if i > 0 and j in [4, 5, 6, 7] and value and not audio_file_exists(value):
                 bg_color = "red"
             
@@ -439,8 +508,7 @@ def display_ingredients_table(data):
 
             if i > 0:  # Skip header row
                 label.bind("<Double-1>", lambda event, r=i, c=j: edit_cell(r, c, ingredient_data, ingredients_frame))
-                label.bind("<ButtonPress-3>", lambda event, r=i: start_long_press(r, ingredients_frame))
-                label.bind("<ButtonRelease-3>", lambda event, r=i: end_long_press(r, ingredients_frame))
+                label.bind("<Button-3>", lambda event, r=i, f=ingredients_frame: show_context_menu(event, r, f))
 
             if j in [4, 5, 6, 7]:  # Audio columns
                 label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
@@ -449,13 +517,18 @@ def display_ingredients_table(data):
         ingredients_frame.grid_columnconfigure(j, weight=1)
 
 def display_instructions_table(data):
+    highlight_color = "yellow"  # Define highlight color
+    default_color = "white"     # Define default color
+    
     for i, row in enumerate(data):
         for j, value in enumerate(row):
             cell = tk.Frame(instructions_frame, relief="solid", borderwidth=1)
             cell.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
             
+            # Set background color based on selection and conditions
             bg_color = highlight_color if i == selected_instruction_row else default_color
-            
+            if i == 0:  # If it's header row
+                bg_color = "light grey"
             if i > 0 and j in [16, 17, 18, 19] and value and not audio_file_exists(value):
                 bg_color = "red"
             
@@ -467,8 +540,7 @@ def display_instructions_table(data):
 
             if i > 0:  # Skip header row
                 label.bind("<Double-1>", lambda event, r=i, c=j: edit_cell(r, c, instruction_data, instructions_frame))
-                label.bind("<ButtonPress-3>", lambda event, r=i: start_long_press(r, instructions_frame))
-                label.bind("<ButtonRelease-3>", lambda event, r=i: end_long_press(r, instructions_frame))
+                label.bind("<Button-3>", lambda event, r=i, f=instructions_frame: show_context_menu(event, r, f))
 
             if j in [16, 17, 18, 19]:  # Audio columns
                 label.bind("<Button-1>", lambda event, r=i, c=j: on_instruction_audio_click(r, c))
@@ -526,18 +598,15 @@ def clear_table(frame):
     for widget in frame.winfo_children():
         widget.destroy()
 
-def start_long_press(row, frame):
-    global long_press_active
-    long_press_active = True
-    root.after(500, lambda: select_row_long_press(row, frame))
 
-def end_long_press(row, frame):
-    global long_press_active
-    long_press_active = False
 
 # Modify the display functions to detect row selection
 
 def edit_cell(row, col, data_table, frame):
+    # Check if the cell should be non-editable
+    if (frame == ingredients_frame and col == 2) or (frame == instructions_frame and col == 13):
+        return  # Exit the function without creating an entry widget
+        
     current_value = data_table[row][col]
     if frame == ingredients_frame:
         audio_columns = [4, 5, 6, 7]  # Audio columns for ingredients
@@ -565,63 +634,37 @@ def edit_cell(row, col, data_table, frame):
         new_value = entry.get()
         old_value = data_table[row][col]
         
-        if frame == instructions_frame and col == 6:  # Duration column
+        if frame == instructions_frame and (col == 6 or col == 2):  # Duration or Induction On Time column
             try:
-                duration_seconds = int(new_value)
-
-                if duration_seconds < 0 or duration_seconds > 6000:
-                    messagebox.showerror("Error", "Duration must be between 0 and 6000 seconds.")
-                    return
-                # Update duration
-                data_table[row][col] = str(duration_seconds)
+                seconds = int(new_value)
                 
-                # Convert duration to minutes and seconds for audioU
-                if duration_seconds >= 60:
-                    minutes = duration_seconds // 60
-                    seconds = duration_seconds % 60
-                    if seconds == 0:
+                if seconds < 0 or seconds > 6000:
+                    field_name = "Duration" if col == 6 else "Induction On Time"
+                    messagebox.showerror("Error", f"{field_name} must be between 0 and 6000 seconds.")
+                    return
+                    
+                # Update both Duration and Induction On Time
+                data_table[row][2] = str(seconds)  # Induction On Time
+                data_table[row][6] = str(seconds)  # Duration
+                
+                # Format time for audioU
+                if seconds >= 60:
+                    minutes = seconds // 60
+                    remaining_seconds = seconds % 60
+                    if remaining_seconds == 0:
                         audioU_text = f"{minutes}Minute"
                     else:
-                        audioU_text = f"{minutes}Minute {seconds}Seconds"
+                        audioU_text = f"{minutes}Minute {remaining_seconds}Seconds"
                 else:
-                    audioU_text = f"{duration_seconds}Seconds"
+                    audioU_text = f"{seconds}Seconds"
                 
                 # Update audioU column (index 19)
                 data_table[row][19] = audioU_text
+                
             except ValueError:
-                messagebox.showerror("Error", "Please enter a valid number for duration")
+                field_name = "Duration" if col == 6 else "Induction On Time"
+                messagebox.showerror("Error", f"Please enter a valid number for {field_name}")
                 return
-        elif frame == instructions_frame and col == 2:  # Induction On Time column
-            try:
-                induction_seconds = int(new_value)
-                
-                if induction_seconds < 0 or induction_seconds > 6000:
-                    messagebox.showerror("Error", "Induction On Time must be between 0 and 6000 seconds.")
-                    return
-                    
-                # Update Induction On Time
-                data_table[row][col] = str(induction_seconds)
-                
-                # Sync with Duration (column 6)
-                data_table[row][6] = str(induction_seconds)
-                
-                # Update audioU format for consistency
-                if induction_seconds >= 60:
-                    minutes = induction_seconds // 60
-                    seconds = induction_seconds % 60
-                    if seconds == 0:
-                        audioU_text = f"{minutes}Minute"
-                    else:
-                        audioU_text = f"{minutes}Minute {seconds}Seconds"
-                else:
-                    audioU_text = f"{induction_seconds}Seconds"
-                    
-                # Update audioU column (index 19)
-                data_table[row][19] = audioU_text
-                
-            except ValueError:
-                messagebox.showerror("Error", "Please enter a valid number for Induction On Time")
-                return   
         if frame == ingredients_frame:
             if col == 0:  # Name
                 update_name(old_value, new_value, ingredients_frame)
@@ -694,38 +737,80 @@ def validate_induction(value):
 def validate_magnetron(value):
     return value in ["0", "20", "40", "60", "80", "100", ""]
 
+def update_action_audio(row, col, new_value, frame):
+    if frame == ingredients_frame:
+        if col == 2:  # Action
+            words = new_value.split()
+            if len(words) >= 3:
+                ingredient_data[row][3] = words[0]  # audio
+                ingredient_data[row][0] = words[1]  # Name
+                ingredient_data[row][5] = words[0]  # audioP
+                update_name(ingredient_data[row][0], words[1], ingredients_frame)
+        elif col == 3:  # audio
+            ingredient_data[row][3] = new_value  # audio
+            ingredient_data[row][5] = new_value  # audioP
+            # Update Action (column 2) with new audio while preserving name and weight
+            ingredient_data[row][2] = f"{new_value} {ingredient_data[row][0]} {ingredient_data[row][1]}"
+        elif col == 0:  # Name
+            ingredient_data[row][0] = new_value  # Name
+            ingredient_data[row][4] = new_value  # AudioI
+            # Update Action (column 2) with new name while preserving audio and weight
+            ingredient_data[row][2] = f"{ingredient_data[row][3]} {new_value} {ingredient_data[row][1]}"
+        elif col == 1:  # Weight
+            ingredient_data[row][1] = new_value  # Weight
+            # Update Action (column 2) with new weight while preserving audio and name
+            ingredient_data[row][2] = f"{ingredient_data[row][3]} {ingredient_data[row][0]} {new_value}"
+    
+    elif frame == instructions_frame:
+        # For instruction frame updates
+        if col == 13:  # Action
+            words = new_value.split()
+            if words:
+                instruction_data[row][1] = words[0]  # Procedure
+                instruction_data[row][17] = words[0]  # audioP
+                if len(words) > 1:
+                    instruction_data[row][4] = words[-1]  # Text
+                    instruction_data[row][16] = words[-1]  # AudioI
+                    update_name(instruction_data[row][4], words[-1], instructions_frame)
+        elif col == 1:  # Procedure update
+            instruction_data[row][1] = new_value  # Procedure
+            instruction_data[row][17] = new_value  # audioP
+            instruction_data[row][13] = f"{new_value} {instruction_data[row][4]} {instruction_data[row][5]}"
+        elif col == 4:  # Text update
+            instruction_data[row][4] = new_value  # Text
+            instruction_data[row][16] = new_value  # AudioI
+            instruction_data[row][13] = f"{instruction_data[row][1]} {new_value} {instruction_data[row][5]}"
+        elif col == 5:  # Weight update
+            instruction_data[row][5] = new_value  # Weight
+            instruction_data[row][13] = f"{instruction_data[row][1]} {instruction_data[row][4]} {new_value}"
+
 def update_name(old_name, new_name, frame):
     if frame == ingredients_frame:
         for ingredient in ingredient_data[1:]:
             if ingredient[0] == old_name:
                 ingredient[0] = new_name  # Name
-                ingredient[2] = update_middle_word(ingredient[2], new_name)  # Action
+                # Update Action with new name while preserving audio and weight
+                ingredient[2] = f"{ingredient[3]} {new_name} {ingredient[1]}"
                 ingredient[4] = new_name  # AudioI
         
         for instruction in instruction_data[1:]:
             if instruction[4] == old_name:
                 instruction[4] = new_name  # Text
-                instruction[13] = update_last_word(instruction[13], new_name)  # Action
+                instruction[13] = f"{instruction[1]} {new_name} {instruction[5]}"
                 instruction[16] = new_name  # AudioI
     
     elif frame == instructions_frame:
         for instruction in instruction_data[1:]:
             if instruction[4] == old_name:
                 instruction[4] = new_name  # Text
-                instruction[13] = update_last_word(instruction[13], new_name)  # Action
+                instruction[13] = f"{instruction[1]} {new_name} {instruction[5]}"
                 instruction[16] = new_name  # AudioI
         
         for ingredient in ingredient_data[1:]:
             if ingredient[0] == old_name:
                 ingredient[0] = new_name  # Name
-                ingredient[2] = update_middle_word(ingredient[2], new_name)  # Action
+                ingredient[2] = f"{ingredient[3]} {new_name} {ingredient[1]}"
                 ingredient[4] = new_name  # AudioI
-
-def update_middle_word(action, new_word):
-    words = action.split()
-    if len(words) >= 3:
-        words[1] = new_word
-    return ' '.join(words)
 
 def update_weight(item_name, new_weight, frame):
     weight_parts = new_weight.split()
@@ -736,78 +821,30 @@ def update_weight(item_name, new_weight, frame):
         for ingredient in ingredient_data[1:]:
             if ingredient[0] == item_name:
                 ingredient[1] = new_weight  # Weight
-                ingredient[2] = update_last_two_words(ingredient[2], numeric_weight, unit)  # Action
+                # Update Action with new weight while preserving audio and name
+                ingredient[2] = f"{ingredient[3]} {ingredient[0]} {new_weight}"
                 ingredient[6] = numeric_weight  # AudioQ
                 ingredient[7] = unit  # AudioU
         
         for instruction in instruction_data[1:]:
             if instruction[4] == item_name:
                 instruction[5] = new_weight  # Weight
-                instruction[13] = update_last_two_words(instruction[13], numeric_weight, unit)  # Action
+                instruction[13] = f"{instruction[1]} {instruction[4]} {new_weight}"
                 instruction[18] = numeric_weight  # AudioQ
-                
     
     elif frame == instructions_frame:
         for instruction in instruction_data[1:]:
             if instruction[4] == item_name:
                 instruction[5] = new_weight  # Weight
-                instruction[13] = update_last_two_words(instruction[13], numeric_weight, unit)  # Action
+                instruction[13] = f"{instruction[1]} {instruction[4]} {new_weight}"
                 instruction[18] = numeric_weight  # AudioQ
-                
         
         for ingredient in ingredient_data[1:]:
             if ingredient[0] == item_name:
                 ingredient[1] = new_weight  # Weight
-                ingredient[2] = update_last_two_words(ingredient[2], numeric_weight, unit)  # Action
+                ingredient[2] = f"{ingredient[3]} {ingredient[0]} {new_weight}"
                 ingredient[6] = numeric_weight  # AudioQ
                 ingredient[7] = unit  # AudioU
-
-def update_last_two_words(action, numeric_weight, unit):
-    words = action.split()
-    if len(words) >= 3:
-        words[-2] = numeric_weight
-        words[-1] = unit
-    return ' '.join(words)
-def update_last_word(action, new_word):
-    words = action.split()
-    if words:
-        words[-1] = new_word
-    return ' '.join(words)
-def update_action_audio(row, col, new_value, frame):
-    if frame == ingredients_frame:
-        if col == 2:  # Action
-            words = new_value.split()
-            if len(words) >= 3:
-                ingredient_data[row][3] = words[0]  # audio
-                ingredient_data[row][0] = words[1]  # Name
-                ingredient_data[row][5] = words[0]  # audioP
-                update_name(ingredient_data[row][0], words[1], ingredients_frame)
-        elif col in [3, 5]:  # audio or audioP
-            ingredient_data[row][3] = new_value  # audio
-            ingredient_data[row][5] = new_value  # audioP
-            action_words = ingredient_data[row][2].split()
-            if action_words:
-                action_words[0] = new_value
-                ingredient_data[row][2] = ' '.join(action_words)
-    
-    elif frame == instructions_frame:
-        if col == 13:  # Action
-            words = new_value.split()
-            if words:
-                instruction_data[row][1] = words[0]  # Procedure
-                instruction_data[row][17] = words[0]  # audioP
-                if len(words) > 1:
-                    instruction_data[row][4] = words[-1]  # Text
-                    instruction_data[row][16] = words[-1]  # AudioI
-                    update_name(instruction_data[row][4], words[-1], instructions_frame)
-        elif col in [1, 17]:  # Procedure or audioP
-            instruction_data[row][1] = new_value  # Procedure
-            instruction_data[row][17] = new_value  # audioP
-            action_words = instruction_data[row][13].split()
-            if action_words:
-                action_words[0] = new_value
-                instruction_data[row][13] = ' '.join(action_words)
-
 
 # Function to save the updated data back to the JSON file
 def save_json():
@@ -1194,6 +1231,20 @@ def refresh_tables():
     global error_cells
     error_cells = []  # Clear any existing error cells
     
+    # Synchronize values in ingredients table
+    for i, row in enumerate(ingredient_data[1:], 1):
+        # Update Action using existing functions
+        update_action_audio(i, 3, row[3], ingredients_frame)  # Sync audio
+        update_name(row[0], row[0], ingredients_frame)       # Sync name
+        update_weight(row[0], row[1], ingredients_frame)     # Sync weight
+    
+    # Synchronize values in instructions table
+    for i, row in enumerate(instruction_data[1:], 1):
+        # Update Action using existing functions
+        update_action_audio(i, 1, row[1], instructions_frame)  # Sync procedure
+        update_action_audio(i, 4, row[4], instructions_frame)  # Sync text
+        update_action_audio(i, 5, row[5], instructions_frame)  # Sync weight
+    
     # Clear and redraw both tables
     clear_table(ingredients_frame)
     clear_table(instructions_frame)
@@ -1229,12 +1280,51 @@ content_frame = tk.Frame(main_canvas)
 # Add the content_frame to the canvas window
 main_canvas.create_window((0, 0), window=content_frame, anchor='nw')
 
-# Ensure that the scroll region is updated when the content changes size
+def on_mousewheel(event):
+    # Cross-platform mouse wheel scrolling
+    if platform.system() == 'Windows':
+        delta = -1 * (event.delta // 120)
+    elif platform.system() == 'Darwin':  # macOS
+        delta = -1 * event.delta
+    else:  # Linux
+        if event.num == 4:
+            delta = -1
+        elif event.num == 5:
+            delta = 1
+        else:
+            return
+    
+    if event.state == 0:  # No modifier keys
+        main_canvas.yview_scroll(delta, "units")
+    elif event.state & 0x1:  # Shift is pressed
+        main_canvas.xview_scroll(delta, "units")
+
 def on_frame_configure(event):
     main_canvas.configure(scrollregion=main_canvas.bbox("all"))
 
-content_frame.bind("<Configure>", on_frame_configure)
+# Bind mouse wheel events for all platforms
+if platform.system() == 'Windows':
+    # Windows bindings
+    main_canvas.bind("<MouseWheel>", on_mousewheel)
+    content_frame.bind("<MouseWheel>", on_mousewheel)
+elif platform.system() == 'Darwin':  # macOS
+    # macOS bindings
+    main_canvas.bind("<MouseWheel>", on_mousewheel)
+    content_frame.bind("<MouseWheel>", on_mousewheel)
+else:
+    # Linux bindings
+    main_canvas.bind("<Button-4>", on_mousewheel)
+    main_canvas.bind("<Button-5>", on_mousewheel)
+    content_frame.bind("<Button-4>", on_mousewheel)
+    content_frame.bind("<Button-5>", on_mousewheel)
 
+# Bind the scrolling to the main window as well to ensure it works everywhere
+root.bind_all("<MouseWheel>", on_mousewheel)  # Windows/macOS
+root.bind_all("<Button-4>", on_mousewheel)    # Linux
+root.bind_all("<Button-5>", on_mousewheel)    # Linux
+
+# Bind frame configuration
+content_frame.bind("<Configure>", on_frame_configure)
 top_frame = tk.Frame(root)
 top_frame.pack(side=tk.TOP, fill=tk.X)
 # Create a frame for the buttons at the top left
@@ -1340,15 +1430,6 @@ prt3_button.pack(side='left', padx=5)
 
 prt4_button = tk.Button(button_frame, text="prt4", command=lambda: prt_action("prt 4"))
 prt4_button.pack(side='left', padx=5)
-
-delete_row_button = tk.Button(button_frame, text="Delete Row", command=delete_selected_row)
-delete_row_button.pack(side='left', padx=5)
-
-copy_button = tk.Button(button_frame, text="Copy Row", command=copy_selected_row)
-copy_button.pack(side='left', padx=5)
-
-paste_button = tk.Button(button_frame, text="Paste Row", command=paste_row)
-paste_button.pack(side='left', padx=5)
 
 refresh_button = tk.Button(button_frame, text="Refresh", command=refresh_tables)
 refresh_button.pack(side=tk.LEFT, padx=5)
