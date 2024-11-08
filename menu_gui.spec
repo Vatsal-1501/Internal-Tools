@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['menu_gui.py'],
+    ['D:\\ii201_Data\\Internal Tools\\Internal-Tools\\menu_gui.py'],
     pathex=[],
     binaries=[],
     datas=[],
