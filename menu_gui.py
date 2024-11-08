@@ -12,7 +12,8 @@ from tkinter import ttk
 import shutil
 import copy
 import platform
-import sys 
+import sys
+from PIL import Image, ImageTk 
 
 
 # Global variables
@@ -50,6 +51,8 @@ def get_base_path():
 BASE_DIR = get_base_path()
 AUDIO_FOLDER_PATH = os.path.join(BASE_DIR, "mp3")
 SELECT_FOLDER_PATHS = os.path.join(BASE_DIR, "Recipee's", "Aloo Samosa")
+Image_folder_path = os.path.join(BASE_DIR,"jpg")
+
 
 global error_cells
 error_cells = []
@@ -126,6 +129,127 @@ def handle_missing_audio(file_name):
                 except Exception as e:
                     messagebox.showerror("Error", f"An error occurred while copying the file: {str(e)}")
     return False
+def handle_image_upload(file_name):
+    # Create the path with a .png extension for saving in the folder
+    image_path = os.path.join(Image_folder_path, f"{file_name}.png")
+
+    # Check if the image with this file name already exists as a .png
+    if os.path.exists(image_path):
+        return True  # Image already exists, no need to upload
+
+    # Prompt the user to select an image file
+    file_path = filedialog.askopenfilename(
+        title="Select Image File",
+        filetypes=[("Image Files", "*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.tiff;*.tif;*.webp;*.svg;*.heic;*.heif;*.raw;*.cr2;*.nef;*.orf;*.sr2;*.psd;*.ai;*.eps;*.ico;*.jfif")]
+    )
+
+    if file_path:
+        try:
+            # Ensure the Image_folder_path exists
+            os.makedirs(Image_folder_path, exist_ok=True)
+
+            # Open the selected file and convert to PNG format
+            with Image.open(file_path) as img:
+                # Convert image to RGB mode if it's in a different mode (like CMYK or RGBA)
+                img = img.convert("RGB")
+                # Save as .png in the target folder
+                img.save(image_path, "PNG")
+
+            messagebox.showinfo("Success", f"Image file '{file_name}.png' has been added successfully.")
+            return True
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred while saving the file: {str(e)}")
+    return False  # Return False if no file was selected or an error occurred
+def show_image_popup(event, value, root):
+    if not value:  # If cell is empty
+        return
+
+    # Check for .jpg and .png file extensions
+    image_path_jpg = os.path.join(Image_folder_path, f"{value}.jpg")
+    image_path_png = os.path.join(Image_folder_path, f"{value}.png")
+
+    # Determine the correct file path
+    if os.path.exists(image_path_jpg):
+        image_path = image_path_jpg
+    elif os.path.exists(image_path_png):
+        image_path = image_path_png
+    else:
+        return  # No image found, exit the function
+
+    try:
+        # Create popup window
+        popup = tk.Toplevel(root)
+        popup.overrideredirect(True)  # Remove window decorations
+
+        # Position popup to the left of the cursor
+        x = root.winfo_pointerx() - 210  # Adjusted to appear to the left
+        y = root.winfo_pointery() + 10
+        popup.geometry(f"+{x}+{y}")
+
+        # Load and resize image to 200x200
+        image = Image.open(image_path)
+        image = image.resize((300, 300), Image.Resampling.LANCZOS)
+
+        # Convert to PhotoImage
+        photo = ImageTk.PhotoImage(image)
+
+        # Create label with image
+        label = tk.Label(popup, image=photo)
+        label.image = photo  # Keep a reference to avoid garbage collection
+        label.pack()
+
+        # Function to destroy popup
+        def destroy_popup(event=None):
+            popup.destroy()
+
+        # Bind the popup destruction to the mouse leave events
+        popup.bind('<Leave>', destroy_popup)
+        event.widget.bind('<Leave>', destroy_popup)
+
+        # Optional: Bind popup to the widget to keep it accessible
+        event.widget._popup = popup
+
+    except Exception as e:
+        print(f"Error showing image: {e}")
+        if 'popup' in locals():
+            popup.destroy()
+
+def display_ingredients_table(data):
+    highlight_color = "yellow"  # Define highlight color
+    default_color = "white"     # Define default color
+    
+    for i, row in enumerate(data):
+        for j, value in enumerate(row):
+            cell = tk.Frame(ingredients_frame, relief="solid", borderwidth=1)
+            cell.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
+            
+            # Set background color based on selection and conditions
+            bg_color = highlight_color if i == selected_ingredient_row else default_color
+            if i == 0:  # If it's header row
+                bg_color = "light grey"
+            if i > 0 and j in [4, 5, 6, 7] and value and not audio_file_exists(value):
+                bg_color = "red"
+            
+            underline = (j in [4, 5, 6, 7] and i > 0)
+            
+            label = tk.Label(cell, text=str(value), font=('Arial', 10, 'underline' if underline else ''),
+                             bg=bg_color, anchor='center')
+            label.pack(side='left', fill='both', expand=True)
+
+            if i > 0:  # Skip header row
+                label.bind("<Double-1>", lambda event, r=i, c=j: edit_cell(r, c, ingredient_data, ingredients_frame))
+                label.bind("<Button-3>", lambda event, r=i, f=ingredients_frame: show_context_menu(event, r, f))
+
+            if j in [4, 5, 6, 7]:  # Audio columns
+                label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
+                
+            # Add image hover for image column (column 8)
+            if j == 8 and i > 0:  # Image column
+                label.bind("<Enter>", lambda event, v=value: show_image_popup(event, v, ingredients_frame.winfo_toplevel()))
+
+    for j in range(len(data[0])):
+        ingredients_frame.grid_columnconfigure(j, weight=1)
+  
 def is_valid_stirrer_value(value):
     if value == "" or value.strip() == "":  # Allow blank or empty string values
         return True
@@ -261,7 +385,7 @@ def format_instructions(data):
     column_names = ['Step', 'Procedure', 'Induction On Time', 'Induction Power', 
                     'Text', 'Weight', 'Duration (s)', 'Lid Status', 
                     'Wait Time (s)', 'Warm Time (s)', 'Stirrer', 
-                    'Mag On Time', 'Mag Power', 'Action', 'Mag Serv', 'Pump','AudioI','AudioP','AudioQ','AudioU','skip','Ind_lid_con', 'threshold', 'Purge on']
+                    'Mag On Time', 'Mag Power', 'Action', 'Mag Serv', 'Pump','AudioI','AudioP','AudioQ','AudioU','skip','Ind_lid_con', 'threshold', 'Purge on', 'Image']
     
     # Loop through the instructions and format the data
     for i, instruction in enumerate(instructions):
@@ -290,10 +414,11 @@ def format_instructions(data):
         ind_lid_con = instruction.get("Indtime_lid_con","")   
         threshold = instruction.get("threshold","")   
         purge_on = instruction.get("purge_on","") 
+        image = instruction.get("image","")
         # Append row data
         rows.append([step, procedure,ind_on_time, ind_power, text, weight, 
                      duration, lid_status, wait_time, warm_time, stirrer, 
-                     mag_on_time, mag_power, action, mag_serv, pump,AudioI,AudioP,AudioQ,AudioU,skip,ind_lid_con,threshold,purge_on])
+                     mag_on_time, mag_power, action, mag_serv, pump,AudioI,AudioP,AudioQ,AudioU,skip,ind_lid_con,threshold,purge_on,image])
     
     # Include headers in the first row
     return [column_names] + rows
@@ -312,7 +437,7 @@ def add_ingredient():
 def add_instruction():
     # Determine the next step number
     next_step_number = len(instruction_data)  # Current length gives the next step number
-    instruction_data.append([f"Step {next_step_number}", "","0", "0", "", "0", "0", "N/A", "0","0","","","","","","","","","","","","","",""])    # Add a new instruction row
+    instruction_data.append([f"Step {next_step_number}", "","0", "0", "", "0", "0", "N/A", "0","0","","","","","","","","","","","","","","",""])    # Add a new instruction row
     clear_table(instructions_frame)  # Clear the current table
     display_instructions_table(instruction_data)  # Refresh the instructions table
 def paste_row(paste_above=False):
@@ -512,6 +637,8 @@ def display_ingredients_table(data):
 
             if j in [4, 5, 6, 7]:  # Audio columns
                 label.bind("<Button-1>", lambda event, r=i, c=j: on_audio_click(r, c))
+            if j == 8 and i > 0:  # Image column
+                label.bind("<Enter>", lambda event, v=value: show_image_popup(event, v, ingredients_frame.winfo_toplevel()))
 
     for j in range(len(data[0])):
         ingredients_frame.grid_columnconfigure(j, weight=1)
@@ -544,6 +671,8 @@ def display_instructions_table(data):
 
             if j in [16, 17, 18, 19]:  # Audio columns
                 label.bind("<Button-1>", lambda event, r=i, c=j: on_instruction_audio_click(r, c))
+            if j == 24 and i > 0:  # Image column
+                label.bind("<Enter>", lambda event, v=value: show_image_popup(event, v, instructions_frame.winfo_toplevel()))
 
     for j in range(len(data[0])):
         instructions_frame.grid_columnconfigure(j, weight=1)
@@ -603,11 +732,36 @@ def clear_table(frame):
 # Modify the display functions to detect row selection
 
 def edit_cell(row, col, data_table, frame):
-    # Check if the cell should be non-editable
+    # Check if this is the image column (column 24) in the ingredients table
+    if frame == ingredients_frame and col == 8:  # Image column
+        current_value = data_table[row][col]
+        file_name = simpledialog.askstring("Image Name", "Enter image name (without extension):")
+        if file_name:
+            if handle_image_upload(file_name):
+                data_table[row][col] = file_name
+                # Clear and refresh both tables
+                clear_table(ingredients_frame)
+                clear_table(instructions_frame)
+                display_ingredients_table(ingredient_data)
+                display_instructions_table(instruction_data)
+        return
+    if frame == instructions_frame and col == 24:  # Image column
+        current_value = data_table[row][col]
+        file_name = simpledialog.askstring("Image Name", "Enter image name (without extension):")
+        if file_name:
+            if handle_image_upload(file_name):
+                data_table[row][col] = file_name
+                # Clear and refresh both tables
+                clear_table(ingredients_frame)
+                clear_table(instructions_frame)
+                display_ingredients_table(ingredient_data)
+                display_instructions_table(instruction_data)
+        return
+    # original edit_cell function remains the same
+    current_value = data_table[row][col]
     if (frame == ingredients_frame and col == 2) or (frame == instructions_frame and col == 13):
         return  # Exit the function without creating an entry widget
         
-    current_value = data_table[row][col]
     if frame == ingredients_frame:
         audio_columns = [4, 5, 6, 7]  # Audio columns for ingredients
     elif frame == instructions_frame:
@@ -625,6 +779,7 @@ def edit_cell(row, col, data_table, frame):
                 # If the file is still missing, keep the cell red
                 cell = frame.grid_slaves(row=row, column=col)[0]
                 cell.config(bg='red')
+
     # Create an entry widget for inline editing
     entry = tk.Entry(frame, font=('Arial', 10))
     entry.insert(0, current_value)
@@ -934,13 +1089,16 @@ def save_json():
                 ingredient["audioQ"] = weight_parts[0] if len(weight_parts) > 0 else ""
                 ingredient["audioU"] = weight_parts[1] if len(weight_parts) > 1 else ""
                 
-                ingredient["image"] = str(row[8]) if len(row) > 8 else ""
+                # Format the image path as required
+                image_name = str(row[8]) if len(row) > 8 else ""
+                if image_name:
+                    ingredient["image"] = f"content://com.invent.ontocook.cropper.fileprovider/my_images/Pictures/{image_name}.png"
                 ingredient["text"] = str(row[9]) if len(row) > 9 else ""
                 
                 updated_data["Ingredients"].append(ingredient)
                 current_id += 1
 
- # Process Instructions
+        # Process Instructions
         current_id = 1  # Reset current_id for instructions
         if isinstance(instruction_data, list) and len(instruction_data) > 1:
             for i in range(1, len(instruction_data)):  # Skip header row
@@ -965,7 +1123,7 @@ def save_json():
                     "audioQ": "",
                     "audioU": "",
                     "durationInSec": 0,
-                    "id": current_id,  # Use current_id instead of i
+                    "id": current_id,
                     "image": "",
                     "lid": "",
                     "mag_severity": "",
@@ -983,7 +1141,7 @@ def save_json():
                     6: "durationInSec", 7: "lid", 8: "wait_time", 9: "warm_time", 10: "stirrer_on",
                     11: "Magnetron_on_time", 12: "Magnetron_power", 13: "app_audio", 14: "mag_severity",
                     15: "pump_on", 16: "audioI", 17: "audioP", 18: "audioQ", 19: "audioU", 20: "skip",
-                    21: "Indtime_lid_con", 22: "threshold", 23: "purge_on"
+                    21: "Indtime_lid_con", 22: "threshold", 23: "purge_on", 24: "image"
                 }
                 
                 for idx, field in field_mapping.items():
@@ -993,9 +1151,14 @@ def save_json():
                         else:
                             instruction[field] = str(row[idx])
                 
+                # Format the image path as required
+                image_name = str(row[24]) if len(row) > 24 else ""
+                if image_name:
+                    instruction["image"] = f"content://com.invent.ontocook.cropper.fileprovider/my_images/Pictures/{image_name}.png"
+                
                 updated_data["Instruction"].append(instruction)
                 current_id += 1
-
+ 
         # Write the updated data to the JSON file
         with open(file_path, 'w') as file:
             json.dump(updated_data, file, indent=2)
@@ -1082,7 +1245,8 @@ def new_recipe():
                 "skip": "false",
                 "Indtime_lid_con": "120",
                 "threshold": "0",
-                "purge_on": "0"
+                "purge_on": "0",
+                "image": ""
             },
             {
                 "Audio": "add",
@@ -1107,7 +1271,8 @@ def new_recipe():
                 "skip": "false",
                 "Indtime_lid_con": "",
                 "threshold": "0",
-                "purge_on": "0"
+                "purge_on": "0",
+                "image": ""
             },
             {
                 "Audio": "stir",
@@ -1132,7 +1297,8 @@ def new_recipe():
                 "skip": "false",
                 "Indtime_lid_con": "60",
                 "threshold": "0",
-                "purge_on": "0"
+                "purge_on": "0",
+                "image": ""
             }
         ]
     }
